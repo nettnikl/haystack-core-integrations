@@ -36,6 +36,7 @@ class OllamaGenerator:
         template: Optional[str] = None,
         raw: bool = False,
         timeout: int = 120,
+        response_format: Optional[Type[BaseModel]] = None,
         keep_alive: Optional[Union[float, str]] = None,
         streaming_callback: Optional[Callable[[StreamingChunk], None]] = None,
     ):
@@ -57,6 +58,9 @@ class OllamaGenerator:
             if you are specifying a full templated prompt in your API request.
         :param timeout:
             The number of seconds before throwing a timeout error from the Ollama API.
+        :param response_format:
+            Pydantic type the answer is generated to comply with. Must be supported by the model. Will not work with
+            answer streaming.
         :param streaming_callback:
             A callback function that is called when a new token is received from the stream.
             The callback function accepts StreamingChunk as an argument.
@@ -76,6 +80,7 @@ class OllamaGenerator:
         self.model = model
         self.url = url
         self.keep_alive = keep_alive
+        self.response_format = response_format
         self.generation_kwargs = generation_kwargs or {}
         self.streaming_callback = streaming_callback
 
@@ -166,6 +171,7 @@ class OllamaGenerator:
     def run(
         self,
         prompt: str,
+        response_format: Optional[Type[BaseModel]] = None,
         generation_kwargs: Optional[Dict[str, Any]] = None,
         *,
         streaming_callback: Optional[Callable[[StreamingChunk], None]] = None,
@@ -181,6 +187,9 @@ class OllamaGenerator:
             [Ollama docs](https://github.com/jmorganca/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values).
         :param streaming_callback:
             A callback function that is called when a new token is received from the stream.
+        :param response_format:
+            Pydantic type the answer is generated to comply with. Must be supported by the model. Will not work with
+            answer streaming.
         :returns: A dictionary with the following keys:
             - `replies`: The responses from the model
             - `meta`: The metadata collected during the run
@@ -189,6 +198,7 @@ class OllamaGenerator:
 
         resolved_streaming_callback = streaming_callback or self.streaming_callback
         stream = resolved_streaming_callback is not None
+        answer_schema = response_format or self.response_format
 
         response = self._client.generate(
             model=self.model,
@@ -196,6 +206,7 @@ class OllamaGenerator:
             stream=stream,
             keep_alive=self.keep_alive,
             options=generation_kwargs,
+            format=(answer_schema.model_json_schema() if answer_schema else None),
         )
 
         if stream:
